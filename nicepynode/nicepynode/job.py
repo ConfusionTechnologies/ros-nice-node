@@ -126,16 +126,19 @@ class Job(ABC, Generic[CT]):
         changes = self.params_to_cfg(params)
 
         try:
+            # will throw if config change is rejected
+            restart = self.on_params_change(self.node, changes)
             # restart anyways if rate was changed
-            restart = self.on_params_change(self.node, changes) or "rate" in changes
+            restart = restart or "rate" in changes
+            # apply changes NOW, parameters not updated yet by ROS
+            self._cfg = replace(self._cfg, **changes)
+
             if restart:
-                # apply changes NOW, parameters not updated yet by ROS
                 self.log.debug(f"Config change requires restart.")
-                self._cfg = replace(self._cfg, **changes)
                 self.restart()
 
             self.log.debug(f"Config changed: {changes}")
-            return SetParametersResult(successful=True)
+            return SetParametersResult(successful=True, reason="")
         except:
             exc = format_exc()
             self.log.error(f"Error applying {changes}:\n{exc}")
