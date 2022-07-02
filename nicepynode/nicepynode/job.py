@@ -2,7 +2,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
 from dataclasses import dataclass, field, replace
-from time import time
 from traceback import format_exc
 
 from rclpy.node import Node
@@ -113,13 +112,13 @@ class Job(ABC, Generic[CT]):
         self.log.info("Restarted")
 
     def _rate_timer_cb(self):
-        now = time()
+        now = self.node.get_clock().now().nanoseconds
         try:
             delta = now - self._rate_timer_prev_time
         except AttributeError:
-            delta = 0.0
+            delta = 0
         self._rate_timer_prev_time = now
-        self.step(delta)
+        self.step(delta / 10 ** 9)
 
     def _param_change_cb(self, params: list[Parameter]):
         # ros2 only includes the params that were changed.
