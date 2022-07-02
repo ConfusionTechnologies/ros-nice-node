@@ -2,12 +2,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
 from dataclasses import dataclass, field, replace
+from time import time
+from traceback import format_exc
 
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import (
     ParameterDescriptor,
-    FloatingPointRange,
+    # FloatingPointRange,
     SetParametersResult,
 )
 
@@ -16,8 +18,8 @@ from rcl_interfaces.msg import (
 class JobCfg:
     """Default config for Job."""
 
-    max_rate: int = 30
-    """Max rate in Hertz for job."""
+    rate: float = 30.0
+    """Rate in Hertz for job."""
     use_sim_time: bool = False
     """ROS Node param for using another clock; i.e. to run simulations."""
 
@@ -53,40 +55,52 @@ class Job(ABC, Generic[CT]):
     def attach_params(self, node: Node, cfg: CT):
         """Attaches Job config to Node as parameters."""
 
-        node.declare_parameter("max_rate", float(cfg.max_rate))
+        node.declare_parameter("rate", float(cfg.rate))
         node.set_descriptor(
-            "max_rate",
+            "rate",
             ParameterDescriptor(
-                description="Max rate in Hertz for job.",
+                description="Rate in Hertz for job.",
                 type=Parameter.Type.DOUBLE.value,
-                floating_point_range=[
-                    FloatingPointRange(from_value=0.0, to_value=32767.0, step=0.0)
-                ],
+                # floating_point_range=[
+                #     FloatingPointRange(from_value=0.0, to_value=None, step=0.0)
+                # ],
             ),
         )
 
     @abstractmethod
     def attach_behaviour(self, node: Node, cfg: CT):
         """Attaches Job behaviours like pub-sub, services, etc to Node."""
-        pass
+        try:
+            self._rate_timer = node.create_timer(1.0 / cfg.rate, self._rate_timer_cb)
+        except ZeroDivisionError:
+            self._rate_timer = None
 
     @abstractmethod
     def detach_behaviour(self, node: Node):
         """Detach & clean up Job behaviours attached to Node."""
-        pass
+        node.destroy_timer(self._rate_timer)
 
     @abstractmethod
     def on_params_change(self, node: Node, changes: dict):
-        """Handle change in parameters.
+        """Handle reconfiguration, returning whether restart is required, and
+        raising if change should be rejected.
 
         Args:
             node (Node): ROS Node
-            params (dict): Map of parameter name to new value
+            changes (dict): Map of parameter name to new value
 
         Returns:
-            Union[Tuple[bool, str], bool]: Whether the change is successful & optionally a message.
+            bool: Whether the change requires a restart.
+
+        Raises:
+            Exception: Reason change should be rejected.
         """
-        return True, "NIL"
+        return False
+
+    @abstractmethod
+    def step(self, delta: float):
+        """Called every cfg.rate. Delta is time in seconds since last call."""
+        pass
 
     def params_to_cfg(self, params: list[Parameter]):
         """Convert list of Parameter to dict (Partial of JobCfg)."""
@@ -96,22 +110,36 @@ class Job(ABC, Generic[CT]):
         """Restart Job, used for example to make config changes effective."""
         self.detach_behaviour(self.node)
         self.attach_behaviour(self.node, self.cfg)
+        self.log.info("Restarted")
+
+    def _rate_timer_cb(self):
+        now = time()
+        try:
+            delta = now - self._rate_timer_prev_time
+        except AttributeError:
+            delta = 0.0
+        self._rate_timer_prev_time = now
+        self.step(delta)
 
     def _param_change_cb(self, params: list[Parameter]):
         # ros2 only includes the params that were changed.
         changes = self.params_to_cfg(params)
-        # apply changes NOW
-        self._cfg = replace(self._cfg, **changes)
 
-        success = self.on_params_change(self.node, changes)
-        if isinstance(success, tuple):
-            success, msg = success
-        else:
-            msg = "NIL"
-        # revert config by retrieving from ROS params (which havent changedyet)
-        if not success:
-            self._cfg = None
-        return SetParametersResult(successful=success, reason=msg)
+        try:
+            # restart anyways if rate was changed
+            restart = self.on_params_change(self.node, changes) or "rate" in changes
+            if restart:
+                # apply changes NOW, parameters not updated yet by ROS
+                self.log.debug(f"Config change requires restart.")
+                self._cfg = replace(self._cfg, **changes)
+                self.restart()
+
+            self.log.debug(f"Config changed: {changes}")
+            return SetParametersResult(successful=True)
+        except:
+            exc = format_exc()
+            self.log.error(f"Error applying {changes}:\n{exc}")
+            return SetParametersResult(successful=False, reason=exc)
 
     def __post_init__(self):
         """Attaches Job to Node."""
@@ -121,6 +149,9 @@ class Job(ABC, Generic[CT]):
         # set to None whenever cfg needs to be recalculated
         # use self.cfg getter to get current cfg
         self._cfg = None
+
+        # for the rate timer
+        self._rate_timer = None
 
         # use self.ini_cfg to set params, which then sets self._cfg
         self.attach_params(self.node, self.ini_cfg)
