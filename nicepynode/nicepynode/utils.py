@@ -4,3 +4,6 @@ class Symbol:
 
     def __repr__(self):
         return self.name
+
+
+# TODO: utils for converting between BBox2D types
