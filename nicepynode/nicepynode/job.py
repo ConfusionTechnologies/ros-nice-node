@@ -111,6 +111,10 @@ class Job(ABC, Generic[CT]):
         self.attach_behaviour(self.node, self.cfg)
         self.log.info("Restarted")
 
+    def get_timestamp(self):
+        """Shortcut for node.get_clock().now().to_msg()"""
+        return self.node.get_clock().now().to_msg()
+
     def _rate_timer_cb(self):
         now = self.node.get_clock().now().nanoseconds
         try:
