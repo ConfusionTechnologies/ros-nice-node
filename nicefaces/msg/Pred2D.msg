@@ -2,7 +2,7 @@ std_msgs/Header header  # timestamp & coordinate frame id (aka camera id or stre
 
 nicefaces/BBox2D pred
 
-float32 confidence
+float32 score
 string label
 
 # TODO: Create msg for FeatureData
