@@ -23,6 +23,7 @@ find_package(std_msgs REQUIRED)
 set(msg_files
   "msg/BBox2D.msg"
   "msg/Pred2D.msg"
+  "msg/Pred2DArray.msg"
 )
 
 set (srv_files)
