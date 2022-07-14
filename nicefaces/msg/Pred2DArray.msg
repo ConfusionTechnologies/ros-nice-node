@@ -1,1 +1,1 @@
-nicefaces/Pred2D preds
+nicefaces/Pred2D[] preds
