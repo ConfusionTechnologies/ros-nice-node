@@ -161,8 +161,10 @@ class Job(ABC, Generic[CT]):
 
         # use self.ini_cfg to set params, which then sets self._cfg
         self.attach_params(self.node, self.ini_cfg)
-        # TODO: check that params can be successfully loaded from ROS save file
         self.attach_behaviour(self.node, self.cfg)
         # NOTE: till all callbacks return True, ros won't actually change the
         # params. This can cause glitches such as stale config.
         self.node.add_on_set_parameters_callback(self._param_change_cb)
+        # NOTE: there is no callback for parameters being set successfully, only
+        # a topic broadcast. I refuse to have to add another listener for that which
+        # is why we use the above callback.
