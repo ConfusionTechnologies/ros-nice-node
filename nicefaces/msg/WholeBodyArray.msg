@@ -1,0 +1,4 @@
+std_msgs/Header header
+nicefaces/WholeBody[] poses
+builtin_interfaces/Time infer_start_time
+builtin_interfaces/Time infer_end_time

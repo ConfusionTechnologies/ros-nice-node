@@ -8,4 +8,6 @@ bool is_norm false
 
 uint8 type 0
 
-float32[<=4] box
+float32[4] rect
+
+# TODO: do you want to add quaternion property for skewed bboxes?

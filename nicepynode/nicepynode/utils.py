@@ -16,12 +16,12 @@ def convert_bbox(box: BBox2D, to_type=None, normalize=None, img_wh=None, inplace
         box = copy(box)
     if not to_type is None and box.type != to_type:
         # as not deepcopy, have to be careful
-        b = box.box
+        b = box.rect
         if box.type == BBox2D.XYXY:
             if to_type == BBox2D.XYWH:
-                box.box = (b[0], b[1], b[2] - b[0], b[3] - b[1])
+                box.rect = (b[0], b[1], b[2] - b[0], b[3] - b[1])
             elif to_type == BBox2D.CBOX:
-                box.box = (
+                box.rect = (
                     (b[0] + b[2]) / 2,
                     (b[1] + b[3]) / 2,
                     b[2] - b[0],
@@ -31,16 +31,16 @@ def convert_bbox(box: BBox2D, to_type=None, normalize=None, img_wh=None, inplace
                 raise AssertionError("Invalid to_type")
         elif box.type == BBox2D.XYWH:
             if to_type == BBox2D.XYXY:
-                box.box = (b[0], b[1], b[0] + b[2], b[1] + b[3])
+                box.rect = (b[0], b[1], b[0] + b[2], b[1] + b[3])
             elif to_type == BBox2D.CBOX:
-                box.box = (b[0] + b[2] / 2, b[1] + b[3] / 2, b[2], b[3])
+                box.rect = (b[0] + b[2] / 2, b[1] + b[3] / 2, b[2], b[3])
             else:
                 raise AssertionError("Invalid to_type")
         elif box.type == BBox2D.CBOX:
             if to_type == BBox2D.XYWH:
-                box.box = (b[0] - b[2] / 2, b[1] - b[3] / 2, b[2], b[3])
+                box.rect = (b[0] - b[2] / 2, b[1] - b[3] / 2, b[2], b[3])
             elif to_type == BBox2D.XYXY:
-                box.box = (
+                box.rect = (
                     b[0] - b[2] / 2,
                     b[1] - b[3] / 2,
                     b[0] + b[2] / 2,
@@ -55,10 +55,11 @@ def convert_bbox(box: BBox2D, to_type=None, normalize=None, img_wh=None, inplace
         assert img_wh, "img_wh cannot be None if normalize is True"
         w, h = img_wh
         if normalize:
-            box.box = (b[0] / w, b[1] / h, b[2] / w, b[3] / h)
+            box.rect = (b[0] / w, b[1] / h, b[2] / w, b[3] / h)
         else:
-            box.box = (b[0] * w, b[1] * h, b[2] * w, b[3] * h)
+            box.rect = (b[0] * w, b[1] * h, b[2] * w, b[3] * h)
 
-    if not inplace:
-        return box
+    return box
 
+
+# TODO: BBox to points & vice-versa
