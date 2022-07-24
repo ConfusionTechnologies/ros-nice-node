@@ -47,14 +47,14 @@ Array of ObjDet2D for convenience. Features:
 
 ### WholeBody
 
-Interface for COCO Wholebody annotations. Features:
+Interface for COCO WholeBody annotations. Features:
 
 - `header` property for synchronization
 - Uses `geometry_msgs/Point` for 2D/3D interoperability
 
 ### WholeBodyArray
 
-Array of Wholebody annotations. Features:
+Array of WholeBody annotations. Features:
 
 - `header` property for synchronization
 - Timestamps for when inference started and ended or profiling
