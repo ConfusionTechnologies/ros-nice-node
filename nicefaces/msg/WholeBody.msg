@@ -4,3 +4,5 @@ nicefaces/BodyKeypoint[133] pose
 
 bool is_norm false
 # TODO: Consider uses type enum to support multiple pose formats besides wholebody?
+
+nicefaces/TrackData track

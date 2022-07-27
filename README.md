@@ -27,9 +27,17 @@ Interface for a 2D bounding box. It may be used as a replacement for `sensor_msg
 - `XYXY`, `XYWH` & `CBOX` (XY of centre + width & height) mode
 - Using normalized (relative) coordinates
 
-## FeatureData
+### BBox2DArray
 
-Interface for data that may be used to associate identity.
+It exists.
+
+### TrackData
+
+Interface for tracking detections (e.g. ObjDet2D, Wholebody, etc). Should contain additional data (i.e. Feature Embeddings) for associating tracks across frames. TrackData also has an `id` property which contains the track id of the object (an empty string indicates the object is not being tracked).
+
+### BodyKeypoint
+
+Coordinates in 3D space, numeric id and score/confidence.
 
 ### ObjDet2D
 
@@ -38,7 +46,7 @@ Interface for a 2D Object Detection from most common 2D Object Detection Compute
 - `header` property for synchronization via [`message_filters`](https://github.com/ros2/message_filters)
 - Optional `feature` property for associating identity using identifiers such as feature vectors
 
-#### ObjDet2DArray
+### ObjDet2DArray
 
 Array of ObjDet2D for convenience. Features:
 
@@ -59,13 +67,13 @@ Array of WholeBody annotations. Features:
 - `header` property for synchronization
 - Timestamps for when inference started and ended or profiling
 
-## AnyLabel
+### AnyLabel
 
 Escape hatch interface for annotations via encoding as a string. Features:
 
 - `header` property for synchronization
 
-## AnyLabelArray
+### AnyLabelArray
 
 Array of AnyLabel for convenience. Features:
 

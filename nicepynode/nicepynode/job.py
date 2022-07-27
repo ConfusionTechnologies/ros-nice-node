@@ -12,6 +12,10 @@ from rcl_interfaces.msg import (
     SetParametersResult,
 )
 
+# TODO:
+# - Some way to trigger node restart
+# - Integrate Managed Lifecycle Nodes when ready
+
 
 @dataclass
 class JobCfg:

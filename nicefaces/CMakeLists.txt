@@ -19,12 +19,13 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 
 set(msg_files
   "msg/BBox2D.msg"
   "msg/BBox2DArray.msg"
-  "msg/FeatureData.msg"
+  "msg/TrackData.msg"
   "msg/BodyKeypoint.msg"
   "msg/ObjDet2D.msg"
   "msg/ObjDet2DArray.msg"
@@ -40,6 +41,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files}
   ${srv_files}
   DEPENDENCIES std_msgs
+  DEPENDENCIES geometry_msgs
   DEPENDENCIES builtin_interfaces
 )
 

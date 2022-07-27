@@ -6,4 +6,4 @@ nicefaces/BBox2D box
 
 float32 score
 string label
-nicefaces/FeatureData feature
+nicefaces/TrackData track
