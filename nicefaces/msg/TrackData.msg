@@ -5,6 +5,7 @@ byte[] data
 
 # Track ID (set once message is tracked)
 string id
+string label
 
 # Keypoints used to identify
 geometry_msgs/Point[] keypoints
