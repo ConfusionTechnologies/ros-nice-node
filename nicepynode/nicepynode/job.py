@@ -100,7 +100,6 @@ class Job(ABC, Generic[CT]):
         """
         return False
 
-    @abstractmethod
     def step(self, delta: float):
         """Called every cfg.rate. Delta is time in seconds since last call."""
         pass

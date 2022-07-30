@@ -20,6 +20,8 @@ Utility message, service & action types that cannot be found in <https://github.
 
 Yes, I am aware <http://wiki.ros.org/vision_msgs> exists. But I already wrote these, and mine are more lax.
 
+I created another series, (name)s, that splits out each array in order to minimize the looping needed in Python... (Yes the performance hit is real when dealing with 10+ poses each with 133 keypoints)
+
 ### BBox2D
 
 Interface for a 2D bounding box. It may be used as a replacement for `sensor_msgs/RegionOfInterest`. Features:
@@ -35,9 +37,9 @@ It exists.
 
 Interface for tracking detections (e.g. ObjDet2D, Wholebody, etc). Should contain additional data (i.e. Feature Embeddings) for associating tracks across frames. TrackData also has an `id` property which contains the track id of the object (an empty string indicates the object is not being tracked).
 
-### BodyKeypoint
+### ProfilingData
 
-Coordinates in 3D space, numeric id and score/confidence.
+Profiling and timing stuff.
 
 ### ObjDet2D
 

@@ -4,9 +4,10 @@ uint8 type 0
 byte[] data
 
 # Track ID (set once message is tracked)
-string id
+int32 id
 string label
 
 # Keypoints used to identify
-geometry_msgs/Point[] keypoints
-float32[] keypoint_scores
+float32[] x
+float32[] y
+float32[] scores

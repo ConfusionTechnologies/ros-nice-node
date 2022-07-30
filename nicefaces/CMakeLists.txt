@@ -24,14 +24,17 @@ find_package(builtin_interfaces REQUIRED)
 
 set(msg_files
   "msg/BBox2D.msg"
+  "msg/BBox2Ds.msg"
   "msg/BBox2DArray.msg"
   "msg/TrackData.msg"
-  "msg/BodyKeypoint.msg"
+  "msg/ProfilingData.msg"
   "msg/ObjDet2D.msg"
+  "msg/ObjDet2Ds.msg"
   "msg/ObjDet2DArray.msg"
   "msg/WholeBody.msg"
   "msg/WholeBodyArray.msg"
   "msg/AnyLabel.msg"
+  "msg/AnyLabels.msg"
   "msg/AnyLabelArray.msg"
 )
 
