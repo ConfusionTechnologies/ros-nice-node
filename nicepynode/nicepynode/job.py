@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from traceback import format_exc
 
 from rclpy.node import Node
@@ -11,6 +11,7 @@ from rcl_interfaces.msg import (
     # FloatingPointRange,
     SetParametersResult,
 )
+from nicepynode.utils import dataclass_from_parameters
 
 # TODO:
 # - Some way to trigger node restart
@@ -49,8 +50,8 @@ class Job(ABC, Generic[CT]):
         """Current (always updated) config of Job."""
 
         if self._cfg is None:
-            self._cfg = type(self.ini_cfg)(
-                **{n: p.value for n, p in self.node._parameters.items()}
+            self._cfg = dataclass_from_parameters(
+                self.ini_cfg, {n: p.value for n, p in self.node._parameters.items()}
             )
         return self._cfg
 
@@ -137,7 +138,7 @@ class Job(ABC, Generic[CT]):
             # restart anyways if rate was changed
             restart = restart or "rate" in changes
             # apply changes NOW, parameters not updated yet by ROS
-            self._cfg = replace(self._cfg, **changes)
+            self._cfg = dataclass_from_parameters(self._cfg, changes)
 
             if restart:
                 self.log.debug(f"Config change requires restart.")

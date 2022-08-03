@@ -1,5 +1,10 @@
+from rclpy.node import Node
 from nicefaces.msg import BBox2D, BBox2Ds
-from copy import copy
+from copy import copy, deepcopy
+from dataclasses import asdict, is_dataclass
+from collections import deque
+import json
+from typing import Any, Sequence, Mapping
 import numpy as np
 
 
@@ -9,6 +14,84 @@ class Symbol:
 
     def __repr__(self):
         return self.name
+
+
+def to_dot_notation(*keys: Sequence[str]):
+    return ".".join(k for k in keys if k != "")
+
+
+def should_jsonify(v):
+    return not isinstance(v, str) and (
+        isinstance(v, Sequence) or isinstance(v, Mapping)
+    )
+
+
+def declare_parameters_from_dataclass(
+    node: Node, obj: Any, namespace="", exclude_keys=[]
+):
+    """Recursively declare parameters based on a Dataclass. 
+    Recursion is done when the Dataclass attribute is another Dataclass. 
+    However, if the attribute is a `Sequence` (i.e. `list` or `tuple`) or `Mapping` (i.e. `dict`), 
+    it will be transparently converted to JSON (Ignores) to allow easy editing.
+
+    Args:
+        node (Node): Node to declare parameters on.
+        obj (Any): Instance of a dataclass.
+        namespace (str, optional): Parameter namespace. Defaults to "".
+        exclude_keys (list, optional): Keys to exclude using dot notation (i.e. `foo.bar`). Defaults to [].
+    """
+    assert is_dataclass(obj) and not isinstance(
+        obj, type
+    ), "Must use instance of a dataclass!"
+
+    # exclude default declared parameters
+    exclude_keys += ["rate", "use_sim_time"]
+
+    # params to declare
+    params = []
+    for k, v in asdict(obj).items():
+        ns = to_dot_notation(namespace, k)
+        if ns in exclude_keys:
+            continue
+
+        # recursively declare parameters if is dataclass
+        if is_dataclass(v):
+            declare_parameters_from_dataclass(
+                node, v, namespace=ns, exclude_keys=exclude_keys
+            )
+            continue
+        # convert list & dicts to str for easy editing externally
+        elif should_jsonify(v):
+            v = json.dumps(v, skipkeys=True, indent=2, sort_keys=True)
+
+        params.append((k, v))
+
+    node.declare_parameters(namespace, params)
+
+
+def dataclass_from_parameters(cls: Any, cfgdict: dict):
+    """Reconstructs Dataclass from dict of parameters.
+    This is because ros Nodes use dot notation for parameters.
+    Dataclass must not have any positional arguments.
+    Use instance of Dataclass if aiming to merge configs (i.e apply changes.)
+    """
+    obj = cls() if isinstance(cls, type) else deepcopy(cls)
+
+    for k, v in cfgdict.items():
+        path = deque(k.split("."))
+
+        nested = obj
+        while len(path) > 1:
+            nested = getattr(nested, path.popleft())
+
+        # check if it was list or dict & convert back
+        attr = getattr(nested, path[0])
+        if should_jsonify(attr):
+            v = json.loads(v)
+
+        setattr(nested, path[0], v)
+
+    return obj
 
 
 def convert_bbox(box: BBox2D, to_type=None, normalize=None, img_wh=None, inplace=True):
