@@ -1,11 +1,21 @@
-from rclpy.node import Node
-from nicefaces.msg import BBox2D, BBox2Ds
+import json
+from collections import deque
 from copy import copy, deepcopy
 from dataclasses import asdict, is_dataclass
-from collections import deque
-import json
-from typing import Any, Sequence, Mapping
+from typing import Any, Mapping, Sequence
+
 import numpy as np
+from nicefaces.msg import BBox2D, BBox2Ds
+from rclpy.node import Node
+from rclpy.qos import QoSPresetProfiles
+
+# Realtime Profile: don't bog down publisher when model is slow
+RT_SUB_PROFILE = copy(QoSPresetProfiles.SENSOR_DATA.value)
+RT_SUB_PROFILE.depth = 0
+
+# Realtime Profile: don't wait for slow subscribers
+RT_PUB_PROFILE = copy(QoSPresetProfiles.SENSOR_DATA.value)
+RT_PUB_PROFILE.depth = 30
 
 
 class Symbol:
@@ -62,7 +72,7 @@ def declare_parameters_from_dataclass(
             continue
         # convert list & dicts to str for easy editing externally
         elif should_jsonify(v):
-            v = json.dumps(v, skipkeys=True, indent=2, sort_keys=True)
+            v = json.dumps(v, skipkeys=True, sort_keys=True)
 
         params.append((k, v))
 
