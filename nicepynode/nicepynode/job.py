@@ -1,16 +1,15 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
 from dataclasses import dataclass, field
 from traceback import format_exc
+from typing import Generic, TypeVar
 
+from rcl_interfaces.msg import ParameterDescriptor  # FloatingPointRange,
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.parameter import Parameter
-from rcl_interfaces.msg import (
-    ParameterDescriptor,
-    # FloatingPointRange,
-    SetParametersResult,
-)
+
 from nicepynode.utils import dataclass_from_parameters
 
 # TODO:

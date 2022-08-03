@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import json
 from collections import deque
 from copy import copy, deepcopy
 from dataclasses import asdict, is_dataclass
 from typing import Any, Mapping, Sequence
 
+import cv2
 import numpy as np
 from nicefaces.msg import BBox2D, BBox2Ds
 from rclpy.node import Node
@@ -15,7 +18,7 @@ RT_SUB_PROFILE.depth = 0
 
 # Realtime Profile: don't wait for slow subscribers
 RT_PUB_PROFILE = copy(QoSPresetProfiles.SENSOR_DATA.value)
-RT_PUB_PROFILE.depth = 30
+RT_PUB_PROFILE.depth = 15
 
 
 class Symbol:
@@ -102,6 +105,59 @@ def dataclass_from_parameters(cls: Any, cfgdict: dict):
         setattr(nested, path[0], v)
 
     return obj
+
+
+# ensure images fit input shape and stride requirements
+# btw img size must be multiple of stride in both directions
+# for example:
+# # imgs is array of cv2 imread HWC BGR images
+# batch = np.stack([letterbox(x)[0] for x in imgs], 0)
+# batch[..., ::-1].transpose(0, 3, 1, 2) # NCHW, RGB
+# (dw, dh) is size of padding (one side-only so need x2)
+# ratio (also w, h) is resizing ratio
+# above 2 are needed to reconstruct the original image
+# they are hence useless
+# taken from https://github.com/ultralytics/yolov5/blob/master/utils/augmentations.py
+def letterbox(
+    im,
+    new_shape=(640, 640),
+    color=(114, 114, 114),
+    auto=True,
+    scaleFill=False,
+    scaleup=True,
+    stride=32,
+):
+    # Resize and pad image while meeting stride-multiple constraints
+    oh, ow = im.shape[:2]  # current shape [height, width]
+    nw, nh = new_shape
+
+    # Scale ratio (new / old)
+    r = min(nw / ow, nh / oh)
+    if not scaleup:  # only scale down, do not scale up (for better val mAP)
+        r = min(r, 1.0)
+
+    # Compute padding
+    ratio = r, r  # width, height ratios
+    new_unpad = round(ow * r), round(oh * r)
+    dw, dh = nw - new_unpad[0], nh - new_unpad[1]  # wh padding
+    if auto:  # minimum rectangle
+        dw, dh = np.mod(dw, stride), np.mod(dh, stride)  # wh padding
+    elif scaleFill:  # stretch
+        dw, dh = 0.0, 0.0
+        new_unpad = (nw, nh)
+        ratio = (nw / ow, nh / oh)  # width, height ratios
+
+    dw /= 2  # divide padding into 2 sides
+    dh /= 2
+
+    if (ow, oh) != new_unpad:  # resize
+        im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    im = cv2.copyMakeBorder(
+        im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color
+    )  # add border
+    return im, ratio, (dw, dh)
 
 
 def convert_bbox(box: BBox2D, to_type=None, normalize=None, img_wh=None, inplace=True):
