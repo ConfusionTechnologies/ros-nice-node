@@ -13,7 +13,6 @@ from rclpy.parameter import Parameter
 from nicepynode.utils import dataclass_from_parameters
 
 # TODO:
-# - Some way to trigger node restart
 # - Integrate Managed Lifecycle Nodes when ready
 
 
@@ -135,7 +134,7 @@ class Job(ABC, Generic[CT]):
             # will throw if config change is rejected
             restart = self.on_params_change(self.node, changes)
             # restart anyways if rate was changed
-            restart = restart or "rate" in changes
+            restart = restart or "rate" in changes or "use_sim_time" in changes
             # apply changes NOW, parameters not updated yet by ROS
             self._cfg = dataclass_from_parameters(self._cfg, changes)
 
