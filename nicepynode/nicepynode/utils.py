@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from array import array
 from collections import deque
 from copy import copy, deepcopy
 from dataclasses import asdict, is_dataclass
@@ -27,6 +28,12 @@ class Symbol:
 
     def __repr__(self):
         return self.name
+
+
+def append_array(arr: array, np_arr: np.ndarray, dtype=np.float32):
+    """Assign to builtin array from numpy array, avoiding copy where possible."""
+    arr.frombytes(np_arr.astype(dtype, order="C", copy=False).data.cast("b"))
+    return arr
 
 
 def to_dot_notation(*keys: Sequence[str]):
@@ -200,6 +207,7 @@ def convert_bbox(box: BBox2D, to_type=None, normalize=None, img_wh=None, inplace
                 raise AssertionError("Invalid to_type")
         else:
             raise AssertionError("BBox2D has invalid type")
+        box.type = to_type
 
     if not normalize is None and box.is_norm != normalize:
         assert img_wh, "img_wh cannot be None if normalize is True"
@@ -208,11 +216,13 @@ def convert_bbox(box: BBox2D, to_type=None, normalize=None, img_wh=None, inplace
             box.rect = (b[0] / w, b[1] / h, b[2] / w, b[3] / h)
         else:
             box.rect = (b[0] * w, b[1] * h, b[2] * w, b[3] * h)
+        box.is_norm = normalize
 
     return box
 
 
-C = np.frombuffer
+# Used internally for convert_bboxes below as an alias. boxes is float32 btw.
+_C = lambda a: np.frombuffer(a, dtype=np.float32)
 
 
 def convert_bboxes(
@@ -221,57 +231,62 @@ def convert_bboxes(
     if not inplace:
         # NOTE: cannot deepcopy ROS2 msg for some reason
         boxes = copy(boxes)
+
     if not to_type is None and boxes.type != to_type:
         # as not deepcopy, have to be careful
         if boxes.type == BBox2D.XYXY:
             if to_type == BBox2D.XYWH:
                 pass
             elif to_type == BBox2D.CBOX:
-                boxes.a = (C(boxes.a) + C(boxes.c)) / 2
-                boxes.b = (C(boxes.b) + C(boxes.d)) / 2
+                boxes.a = append_array(array("f"), (_C(boxes.a) + _C(boxes.c)) / 2)
+                boxes.b = append_array(array("f"), (_C(boxes.b) + _C(boxes.d)) / 2)
             else:
                 raise AssertionError("Invalid to_type")
 
-            boxes.c = C(boxes.c) - C(boxes.a)
-            boxes.d = C(boxes.d) - C(boxes.b)
+            boxes.c = append_array(array("f"), _C(boxes.c) - _C(boxes.a))
+            boxes.d = append_array(array("f"), _C(boxes.d) - _C(boxes.b))
 
         elif boxes.type == BBox2D.XYWH:
             if to_type == BBox2D.XYXY:
-                boxes.c = C(boxes.a) + C(boxes.c)
-                boxes.d = C(boxes.b) + C(boxes.d)
+                boxes.c = append_array(array("f"), _C(boxes.a) + _C(boxes.c))
+                boxes.d = append_array(array("f"), _C(boxes.b) + _C(boxes.d))
             elif to_type == BBox2D.CBOX:
-                boxes.a = C(boxes.a) + C(boxes.c) / 2
-                boxes.b = C(boxes.b) + C(boxes.d) / 2
+                boxes.a = append_array(array("f"), _C(boxes.a) + _C(boxes.c) / 2)
+                boxes.b = append_array(array("f"), _C(boxes.b) + _C(boxes.d) / 2)
             else:
                 raise AssertionError("Invalid to_type")
         elif boxes.type == BBox2D.CBOX:
             if to_type == BBox2D.XYWH:
                 pass
             elif to_type == BBox2D.XYXY:
-                boxes.c = C(boxes.a) + C(boxes.c) / 2
-                boxes.d = C(boxes.b) + C(boxes.d) / 2
+                boxes.c = append_array(array("f"), _C(boxes.a) + _C(boxes.c) / 2)
+                boxes.d = append_array(array("f"), _C(boxes.b) + _C(boxes.d) / 2)
             else:
                 raise AssertionError("Invalid to_type")
 
-            boxes.a = C(boxes.a) - C(boxes.c) / 2
-            boxes.b = C(boxes.b) - C(boxes.d) / 2
+            boxes.a = append_array(array("f"), _C(boxes.a) - _C(boxes.c) / 2)
+            boxes.b = append_array(array("f"), _C(boxes.b) - _C(boxes.d) / 2)
 
         else:
             raise AssertionError("BBox2D has invalid type")
+
+        boxes.type = to_type
 
     if not normalize is None and boxes.is_norm != normalize:
         assert img_wh, "img_wh cannot be None if normalize is True"
         w, h = img_wh
         if normalize:
-            boxes.a = C(boxes.a) / w
-            boxes.b = C(boxes.b) / h
-            boxes.c = C(boxes.c) / w
-            boxes.d = C(boxes.d) / h
+            boxes.a = append_array(array("f"), _C(boxes.a) / w)
+            boxes.b = append_array(array("f"), _C(boxes.b) / h)
+            boxes.c = append_array(array("f"), _C(boxes.c) / w)
+            boxes.d = append_array(array("f"), _C(boxes.d) / h)
         else:
-            boxes.a = C(boxes.a) * w
-            boxes.b = C(boxes.b) * h
-            boxes.c = C(boxes.c) * w
-            boxes.d = C(boxes.d) * h
+            boxes.a = append_array(array("f"), _C(boxes.a) * w)
+            boxes.b = append_array(array("f"), _C(boxes.b) * h)
+            boxes.c = append_array(array("f"), _C(boxes.c) * w)
+            boxes.d = append_array(array("f"), _C(boxes.d) * h)
+
+        boxes.is_norm = normalize
 
     return boxes
 
