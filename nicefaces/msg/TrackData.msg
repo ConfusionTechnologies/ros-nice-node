@@ -4,7 +4,7 @@ uint8 type 0
 byte[] data
 
 # Track ID (set once message is tracked)
-int32 id
+int32 id -1
 string label
 
 # Keypoints used to identify
