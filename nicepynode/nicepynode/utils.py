@@ -4,7 +4,7 @@ import json
 from array import array
 from collections import deque
 from copy import copy, deepcopy
-from dataclasses import asdict, is_dataclass
+from dataclasses import is_dataclass
 from typing import Any, Mapping, Sequence
 
 import cv2
@@ -69,7 +69,7 @@ def declare_parameters_from_dataclass(
 
     # params to declare
     params = []
-    for k, v in asdict(obj).items():
+    for k, v in obj.__dict__.items():
         ns = to_dot_notation(namespace, k)
         if ns in exclude_keys:
             continue
