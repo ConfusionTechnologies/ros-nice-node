@@ -6,13 +6,21 @@ This repository contains 3 packages that forms a framework on top of ROS2. The g
 - Centralize utility functions & tools
 - Provide a more powerful & easy API
 
-## nicepynode
+## (DEPRECATED) nicepynode
 
 Python utilities and ROS2 node wrapper.
 
+## (NEW) nice_node_py
+
+Python ROS2 Node Wrapper inspired by the API of Python web servers and utilities.
+
+## (NEW) nicefaces_utils_py
+
+Message conversion and other utilities regarding message types.
+
 ## (TBD) nicecppnode
 
-C++ utilities and ROS2 node wrapper.
+C++ utilities and ROS2 node wrapper. However, I am not familiar enough with the C++ api (plus my C++ is quite rusty), to judge whether this would actually be necessary.
 
 ## nicefaces
 
