@@ -173,7 +173,8 @@ class NiceNode(Node, Generic[CfgType]):
         """Decorator to register callback to run after parameter/config change.
 
         Typically used to initialize things based on the config. See `NiceNode.clean()`
-        for cleaning up things.
+        for cleaning up things. Callback may optionally accept 1 positional parameter
+        which is a dict mapping changed parameters to their values.
 
         Arguments are the config keys that would trigger the function to re-run.
         If None is provided as the argument, the callback will not re-run unless
@@ -189,7 +190,8 @@ class NiceNode(Node, Generic[CfgType]):
         """Decorator to register callback to run before parameter/config change.
 
         Typically used to clean up things based on the config. See `NiceNode.init()`
-        for initializing things.
+        for initializing things. Callback may optionally accept 1 positional parameter
+        which is a dict mapping changed parameters to their values.
 
         Arguments are the config keys that would trigger the function to re-run.
         If None is provided as the argument, the callback will not re-run unless
@@ -287,6 +289,9 @@ class NiceNode(Node, Generic[CfgType]):
     def interval(self, key_or_rate: Union[str, int]):
         """Decorator to register callback that runs at an interval.
 
+        Callback may optionally accept 1 positional parameter which is the delta
+        since the last call in seconds.
+
         Args:
             key_or_rate (Union[str, int]): Either config key containing the rate or the rate.
 
@@ -294,7 +299,6 @@ class NiceNode(Node, Generic[CfgType]):
             Callable: Decorator
         """
 
-        # TODO: timer delta given to callback
         from_cfg = isinstance(key_or_rate, str)
         assert not from_cfg or hasattr(
             self._default_cfg, key_or_rate
@@ -305,12 +309,26 @@ class NiceNode(Node, Generic[CfgType]):
         def decorator(func: Callable):
             handle: Timer = None
 
+            prev_time = -1
+
+            def wrapper():
+                nonlocal prev_time
+                now = self.get_clock().now().nanoseconds
+                delta = 0
+                if prev_time != -1:
+                    delta = now - prev_time
+                prev_time = now
+                try:
+                    func(delta / 10 ** 9)
+                except TypeError:
+                    func()
+
             @self.init(*deps)
             def create(changes: Dict[str, Any]):
                 nonlocal handle, func
                 rate: int = changes[key_or_rate] if from_cfg else key_or_rate
                 try:
-                    handle = self.create_timer(1.0 / rate, func)
+                    handle = self.create_timer(1.0 / rate, wrapper)
                 except ZeroDivisionError:
                     handle = None
 
