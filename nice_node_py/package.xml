@@ -8,6 +8,7 @@
   <license>MIT</license>
 
   <exec_depend>python-attrs-pip</exec_depend>
+  <exec_depend>ros2topic</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

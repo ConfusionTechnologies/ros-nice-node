@@ -94,7 +94,7 @@ class NiceNode(Node, Generic[CfgType]):
         self._logger.info(f"Config declared:\n{self.cfg}")
         return params
 
-    def set_cfg(self, path: str, val: Any):
+    def set_config(self, path: str, val: Any):
         """Set config value and update parameter.
 
         Args:
@@ -106,6 +106,10 @@ class NiceNode(Node, Generic[CfgType]):
         """
         raise NotImplementedError()
         self.set_parameters(Parameter())
+
+    def _assert_key(self, key: str):
+        """Ensure key is in config data structure."""
+        assert hasattr(self._default_cfg, key), f"Key {key} not found in config!"
 
     def _callback_params_changed(self, params: List[Parameter]):
         """Callback attached to `node.add_on_set_parameters_callback()`."""
@@ -234,7 +238,7 @@ class NiceNode(Node, Generic[CfgType]):
         Returns:
             Callable: Decorator
         """
-        assert hasattr(self._default_cfg, key), f"Key {key} not found in config!"
+        self._assert_key(key)
 
         def decorator(func: Callable[[MsgType], Any]):
             handle: Subscription = None
@@ -256,6 +260,33 @@ class NiceNode(Node, Generic[CfgType]):
 
         return decorator
 
+    def sub_img(self, key: str, qos: Union[QoSProfile, int] = RT_SUB_PROFILE):
+        self._assert_key(key)
+        # NOTE: cvbridge is optional dependency, imported here only when needed
+        # dont ask me why cvbridge decided to use a singleton structure instead
+        # of storing their conversion maps as globals
+        import numpy as np
+        from cv_bridge import CvBridge
+        from sensor_msgs.msg import Image
+
+        bridge = CvBridge()
+
+        def decorator(func: Callable[[np.ndarray], Any]):
+            @self.sub(key, None, qos)
+            def wrapper(msg: Any):
+                if isinstance(msg, Image):
+                    img = bridge.imgmsg_to_cv2(msg, "bgr8")
+                else:
+                    img = bridge.compressed_imgmsg_to_cv2(msg, "bgr8")
+                if 0 in img.shape:
+                    self._logger.debug("Image has invalid shape!")
+                    return
+                func(img)
+
+            return func
+
+        return decorator
+
     def pub(self, key: str, msg: Any, qos: QoSProfile = RT_PUB_PROFILE):
         """Publish message.
 
@@ -268,7 +299,7 @@ class NiceNode(Node, Generic[CfgType]):
             msg (Any): Message to publish.
             qos (Union[QoSProfile, int], optional): QosProfile. Defaults to RT_PUB_PROFILE.
         """
-        assert hasattr(self._default_cfg, key), f"Key {key} not found in config!"
+        self._assert_key(key)
         publisher = self._publishers_cache.get(key, None)
 
         # lazily register callbacks to re-create publisher if topic name changes
@@ -300,9 +331,8 @@ class NiceNode(Node, Generic[CfgType]):
         """
 
         from_cfg = isinstance(key_or_rate, str)
-        assert not from_cfg or hasattr(
-            self._default_cfg, key_or_rate
-        ), f"Key {key_or_rate} not found in config!"
+        if from_cfg:
+            self._assert_key(key_or_rate)
 
         deps = [key_or_rate] if from_cfg else []
 
