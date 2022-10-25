@@ -1,7 +1,10 @@
-from typing import Any, Dict, Generic, List
+from typing import Any, Callable, Dict, Generic, List
 
 from rclpy import Node
 from rclpy.parameter import Parameter
+from rclpy.publisher import Publisher
+from rclpy.subscription import Subscription
+from ros2topic.api import get_msg_class
 
 from .types import *
 from .utils import params_from_struct, should_update, struct_from_params
@@ -36,6 +39,9 @@ class NiceNode(Node, Generic[CfgType]):
 
         self._init_callbacks: CallbackListType = []
         self._clean_callbacks: CallbackListType = []
+        # I refuse to search the internal self._publishers each time for topic
+        self._publishers_cache: Dict[str, Publisher] = {}
+
         self.add_on_set_parameters_callback(self._callback_params_changed)
 
     def declare_config(self, cfg: CfgType, **kwargs):
@@ -99,7 +105,7 @@ class NiceNode(Node, Generic[CfgType]):
                 func(changes)
 
     def _add_callback(self, arr: CallbackListType, now: bool, *deps: str):
-        """Internal function to add a callback to NiceNode."""
+        """Internal function to add a callback to NiceNode via a decorator."""
 
         def decorator(func: CallbackType):
             nonlocal deps
@@ -165,9 +171,66 @@ class NiceNode(Node, Generic[CfgType]):
     # TODO: subscribe & unsubsribe etc functions are basically specific implementations
     # of init and clean with specific dependencies
 
-    def subscribe(self, key: str, msg_type=None, qos=5):
-        def decorator(f):
+    # TODO: implementation of sub for message synchronization
 
-            return f
+    def sub(self, key: str, msg_type: MsgType = None, qos: Any = 5):
+        """Decorator to register subscription callback.
+
+        If `msg_type` is None, this decorator will use `ros2topic.api` to get the
+        message type and will block until successful.
+
+        Args:
+            key (str): Config key containing the topic name to subscribe to.
+            msg_type (MsgType, optional): Message type. Defaults to None.
+            qos (Any, optional): QoS level. Defaults to 5.
+
+        Returns:
+            Callable: Decorator
+        """
+        assert key in self._get_param_dict(), f"Key {key} not found in config!"
+
+        def decorator(func: Callable[[MsgType], Any]):
+            handle: Subscription = None
+
+            @self.init(key)
+            def sub(changes: Dict[str, Any]):
+                nonlocal msg_type, qos, handle, func
+                topic: str = changes[key]
+                if msg_type is None:
+                    msg_type = get_msg_class(self, topic, blocking=True)
+                handle = self.create_subscription(msg_type, topic, func, qos)
+
+            @self.clean(key)
+            def unsub(_):
+                nonlocal handle
+                self.destroy_subscription(handle)
+
+            return func
 
         return decorator
+
+    def pub(self, key: str, msg: Any, qos: Any = 5):
+        """Publish message.
+
+        Args:
+            key (str): Config key containing the topic name to publish to.
+            msg (Any): Message to publish.
+            qos (Any, optional): QoS level. Defaults to 5.
+        """
+        assert key in self._get_param_dict(), f"Key {key} not found in config!"
+        publisher = self._publishers_cache.get(key, None)
+
+        # lazily register callbacks to re-create publisher if topic name changes
+        if publisher is None:
+
+            @self.init(key)
+            def create(changes: Dict[str, Any]):
+                nonlocal publisher, msg, qos
+                publisher = self.create_publisher(type(msg), changes[key], qos)
+                self._publishers_cache[key] = publisher
+
+            @self.clean(key)
+            def clean(_):
+                self.destroy_publisher(self._publishers_cache[key])
+
+        publisher.publish(msg)
