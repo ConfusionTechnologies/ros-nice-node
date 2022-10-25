@@ -18,13 +18,13 @@ msg = ""
 
 
 @node.init()
-def run_once(_):
+def run_once():
     """Callback only runs once"""
     pass
 
 
 @node.init("pub_size")
-def init_msg(_):
+def init_msg():
     """Callback runs after config option specified change"""
     global msg
     msg = "M" * node.cfg.pub_size
@@ -38,7 +38,7 @@ def publish():
 
 # @node.clean("hello_topic", "pub_size", "pub_rate")
 @node.clean(...)
-def clean(_):
+def clean():
     """callback runs before any config option changes"""
     pass
 

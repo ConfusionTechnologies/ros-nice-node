@@ -7,7 +7,7 @@ from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.publisher import Publisher
-from rclpy.qos import QoSPresetProfiles
+from rclpy.qos import QoSPresetProfiles, QoSProfile
 from rclpy.subscription import Subscription
 from rclpy.timer import Timer
 from rclpy.utilities import get_default_context
@@ -18,6 +18,7 @@ from .utils import params_from_struct, should_update, struct_from_params
 
 __all__ = ["NiceNode", "run"]
 
+# TODO: make the global default RT_SUB_PROFILE & RT_PUB_PROFILE configurable
 
 # Realtime Profile: don't bog down publisher when model is slow
 RT_SUB_PROFILE = copy(QoSPresetProfiles.SENSOR_DATA.value)
@@ -154,7 +155,10 @@ class NiceNode(Node, Generic[CfgType]):
             arr.append((func, deps))
             if now:
                 # call func now with all parameters as "changes"
-                func(self._get_param_dict())
+                try:
+                    func(self._get_param_dict())
+                except TypeError:
+                    func()  # func doesn't need changes dict
             return func
 
         return decorator
@@ -203,21 +207,27 @@ class NiceNode(Node, Generic[CfgType]):
     # due to the added complexity of handling a dynamically typed config object.
     # Either we sacrifice simple names via namespacing, or we risk name collisions.
 
-    # TODO: subscribe & unsubsribe etc functions are basically specific implementations
-    # of init and clean with specific dependencies
-
     # TODO: implementation of sub for message synchronization
 
-    def sub(self, key: str, msg_type: MsgType = None, qos: Any = RT_SUB_PROFILE):
+    def sub(
+        self,
+        key: str,
+        msg_type: MsgType = None,
+        qos: Union[QoSProfile, int] = RT_SUB_PROFILE,
+    ):
         """Decorator to register subscription callback.
 
         If `msg_type` is None, this decorator will use `ros2topic.api` to get the
         message type and will block until successful.
 
+        The default for `qos` is designed for realtime, high throughput applications.
+        If greater reliability is wanted, set `qos` to an int, representing the queue
+        depth, to get back the default reliable QoSProfile.
+
         Args:
             key (str): Config key containing the topic name to subscribe to.
             msg_type (MsgType, optional): Message type. Defaults to None.
-            qos (Any, optional): QoS level. Defaults to 5.
+            qos (Union[QoSProfile, int], optional): QosProfile. Defaults to RT_SUB_PROFILE.
 
         Returns:
             Callable: Decorator
@@ -236,7 +246,7 @@ class NiceNode(Node, Generic[CfgType]):
                 handle = self.create_subscription(msg_type, topic, func, qos)
 
             @self.clean(key)
-            def unsub(_):
+            def unsub():
                 nonlocal handle
                 self.destroy_subscription(handle)
 
@@ -244,13 +254,17 @@ class NiceNode(Node, Generic[CfgType]):
 
         return decorator
 
-    def pub(self, key: str, msg: Any, qos: Any = RT_PUB_PROFILE):
+    def pub(self, key: str, msg: Any, qos: QoSProfile = RT_PUB_PROFILE):
         """Publish message.
+
+        The default for `qos` is designed for realtime, high throughput applications.
+        If greater reliability is wanted, set `qos` to an int, representing the queue
+        depth, to get back the default reliable QoSProfile.
 
         Args:
             key (str): Config key containing the topic name to publish to.
             msg (Any): Message to publish.
-            qos (Any, optional): QoS level. Defaults to 5.
+            qos (Union[QoSProfile, int], optional): QosProfile. Defaults to RT_PUB_PROFILE.
         """
         assert hasattr(self._default_cfg, key), f"Key {key} not found in config!"
         publisher = self._publishers_cache.get(key, None)
@@ -265,7 +279,7 @@ class NiceNode(Node, Generic[CfgType]):
                 self._publishers_cache[key] = publisher
 
             @self.clean(key)
-            def clean(_):
+            def clean():
                 self.destroy_publisher(self._publishers_cache[key])
 
         publisher.publish(msg)
@@ -301,7 +315,7 @@ class NiceNode(Node, Generic[CfgType]):
                     handle = None
 
             @self.clean(*deps)
-            def clean(_):
+            def clean():
                 nonlocal handle
                 if handle:
                     self.destroy_timer(handle)

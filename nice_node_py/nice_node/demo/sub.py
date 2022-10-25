@@ -27,12 +27,12 @@ log = node.get_logger()
 
 
 @node.init("buf_size")
-def init_buffer(_):
+def init_buffer():
     G.buffer = deque([], node.cfg.buf_size)
 
 
 @node.sub("hello_topic")
-def on_msg(_):
+def on_msg(msg):
     now = time.time()
     if G.prev_time != -1:
         G.buffer.append(now - G.prev_time)
