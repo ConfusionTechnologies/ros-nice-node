@@ -1,13 +1,15 @@
 """Miscellaneous utilities."""
 
 import array
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Set
+
+from ..types import DependenciesType
 
 # numpy is an optional dependency
 if TYPE_CHECKING:
     import numpy as np
 
-__all__ = ["Symbol", "append_array"]
+__all__ = ["Symbol", "append_array", "should_update"]
 
 
 class Symbol:
@@ -37,3 +39,8 @@ def append_array(arr: array.array, np_arr: "np.ndarray", dtype: type = ...):
         ).data.cast("b")
     )
     return arr
+
+
+def should_update(deps: DependenciesType, changes: Set[str]):
+    """Given dependencies and a list of changes, determine if callback should trigger."""
+    return deps is not None and (deps is ... or bool(changes & deps))

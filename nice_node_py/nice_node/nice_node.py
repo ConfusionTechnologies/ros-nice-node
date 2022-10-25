@@ -4,7 +4,7 @@ from rclpy import Node
 from rclpy.parameter import Parameter
 
 from .types import *
-from .utils import params_from_struct, struct_from_params
+from .utils import params_from_struct, should_update, struct_from_params
 
 
 class NiceNode(Node, Generic[CfgType]):
@@ -12,14 +12,14 @@ class NiceNode(Node, Generic[CfgType]):
     def cfg(self) -> CfgType:
         """Current config for node based on parameters."""
         try:
-            # set self._cfg to None to recalculate config from parameters
+            # NOTE: set self._cfg to None to recalculate config from parameters
             if self._cfg is None:
                 self._cfg = struct_from_params(
                     self._default_cfg, self._get_param_dict()
                 )
             return self._cfg
         except AttributeError:
-            # declare_config() has to be called first
+            # NOTE: declare_config() has to be called first
             raise RuntimeError("Config has not been declared yet!")
 
     def __init__(self, node_name: str = ..., **kwargs):
@@ -49,7 +49,7 @@ class NiceNode(Node, Generic[CfgType]):
         Returns:
             List[Parameter]: Return value of `node.declare_parameters()`.
         """
-        # resetting the parameters like this is probably a bad idea
+        # NOTE: resetting the parameters like this is probably a bad idea
         if hasattr(self, "_default_cfg"):
             for p in self._parameters.keys():
                 try:
@@ -75,13 +75,14 @@ class NiceNode(Node, Generic[CfgType]):
         self.set_parameters(Parameter())
 
     def _callback_params_changed(self, params: List[Parameter]):
+        """Callback attached to `node.add_on_set_parameters_callback()`."""
         # only includes the params that were changed
-        changes = {p.name: p.value for p in params}
+        changes: Dict[str, Any] = {p.name: p.value for p in params}
         changes.pop("use_sim_time", None)  # remove predeclared ROS2 parameter
 
         # trigger clean before cfg update
         for func, deps in self._clean_callbacks:
-            if deps is not None and (deps is ... or any(d in changes for d in deps)):
+            if should_update(deps, changes.keys()):
                 func(changes)
 
         # NOTE: This callback occurs before the parameters are actually set.
@@ -94,10 +95,12 @@ class NiceNode(Node, Generic[CfgType]):
 
         # trigger init after cfg update
         for func, deps in self._init_callbacks:
-            if deps is not None and (deps is ... or any(d in changes for d in deps)):
+            if should_update(deps, changes.keys()):
                 func(changes)
 
-    def _add_callback(self, arr: list, now: bool, *deps: str):
+    def _add_callback(self, arr: CallbackListType, now: bool, *deps: str):
+        """Internal function to add a callback to NiceNode."""
+
         def decorator(func: CallbackType):
             nonlocal deps
             # standardize
@@ -105,6 +108,8 @@ class NiceNode(Node, Generic[CfgType]):
                 deps = ...  # always rerun
             elif deps[0] is None:
                 deps = None  # don't rerun
+            else:
+                deps = set(deps)
             arr.append((func, deps))
             if now:
                 # call func now with all parameters as "changes"
@@ -114,6 +119,7 @@ class NiceNode(Node, Generic[CfgType]):
         return decorator
 
     def _get_param_dict(self) -> Dict[str, Any]:
+        """Get current parameters as dict."""
         params = {n: p.value for n, p in self._parameters.items()}
         params.pop("use_sim_time", None)  # remove predeclared ROS2 parameter
         return params
