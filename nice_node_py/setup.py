@@ -1,3 +1,5 @@
+from glob import glob
+
 from setuptools import setup
 
 package_name = "nice_node_py"
@@ -9,6 +11,7 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
+        ("share/" + package_name, glob("launch/*.launch.py")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -18,6 +21,9 @@ setup(
     license="MIT",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": [],
+        "console_scripts": [
+            "pub = nice_node.demo.pub:main",
+            "sub = nice_node.demo.sub:main",
+        ],
     },
 )

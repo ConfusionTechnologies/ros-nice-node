@@ -61,7 +61,7 @@ def params_from_struct(
     for k, v in struct.__dict__.items():
         # ROS2 uses dot notation for parameter namespacing
         # See https://docs.ros2.org/latest/api/rclpy/api/node.html#rclpy.node.Node.declare_parameters
-        ns = ".".join([namespace, k])
+        ns = ".".join([namespace, k]) if namespace != "" else k
         if ns in exclude_keys:
             continue
 
