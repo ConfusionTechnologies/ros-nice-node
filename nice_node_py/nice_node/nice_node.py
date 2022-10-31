@@ -109,7 +109,15 @@ class NiceNode(Node, Generic[CfgType]):
 
     def _assert_key(self, key: str):
         """Ensure key is in config data structure."""
-        assert hasattr(self._default_cfg, key), f"Key {key} not found in config!"
+        try:
+            if "." in key:
+                v = self._default_cfg
+                for k in key.split("."):
+                    v = getattr(v, k)
+            else:
+                getattr(self._default_cfg, key)
+        except AttributeError:
+            assert False, f"Key {key} not found in config!"
 
     def _callback_params_changed(self, params: List[Parameter]):
         """Callback attached to `node.add_on_set_parameters_callback()`."""
@@ -261,6 +269,15 @@ class NiceNode(Node, Generic[CfgType]):
         return decorator
 
     def sub_img(self, key: str, qos: Union[QoSProfile, int] = RT_SUB_PROFILE):
+        """Decorator to register subscription callback to an Image/Compressed Image topic.
+
+        Args:
+            key (str): Config key containing the topic name to subscribe to.
+            qos (Union[QoSProfile, int], optional): QosProfile. Defaults to RT_SUB_PROFILE.
+
+        Returns:
+            Callable: Decorator
+        """
         self._assert_key(key)
         # NOTE: cvbridge is optional dependency, imported here only when needed
         # dont ask me why cvbridge decided to use a singleton structure instead

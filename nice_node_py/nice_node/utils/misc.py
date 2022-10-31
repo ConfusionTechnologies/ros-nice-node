@@ -43,4 +43,19 @@ def append_array(arr: array.array, np_arr: "np.ndarray", dtype: type = ...):
 
 def should_update(deps: DependenciesType, changes: Set[str]):
     """Given dependencies and a list of changes, determine if callback should trigger."""
-    return deps is not None and (deps is ... or bool(changes & deps))
+    if deps is None:
+        return False
+    elif deps is ...:
+        return True
+    elif bool(changes & deps):
+        return True
+    # Account for nested config structures (dot notation)
+    nested_changes = filter(lambda v: "." in v, changes)
+    for change in nested_changes:
+        segments = change.split(".")
+        # count from 1, exclude last segment (thats the original change)
+        for i in range(1, len(segments)):
+            parent = ".".join(segments[:i])
+            if parent in deps:
+                return True
+    return False
