@@ -52,6 +52,7 @@ def params_from_struct(
 
     # instantiate config struct if class was given
     struct = struct() if isinstance(struct, type) else struct
+    exclude_keys = set(exclude_keys)  # for user convenience
 
     # exclude parameters that are declared by default beforehand
     exclude_keys.add("use_sim_time")
