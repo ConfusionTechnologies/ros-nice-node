@@ -12,6 +12,7 @@ from rclpy.subscription import Subscription
 from rclpy.timer import Timer
 from rclpy.utilities import get_default_context
 from ros2topic.api import get_msg_class
+from std_msgs.msg import Header
 
 from .types import *
 from .utils import params_from_struct, should_update, struct_from_params
@@ -288,7 +289,7 @@ class NiceNode(Node, Generic[CfgType]):
 
         bridge = CvBridge()
 
-        def decorator(func: Callable[[np.ndarray], Any]):
+        def decorator(func: Callable[[np.ndarray, Header], Any]):
             @self.sub(key, None, qos)
             def wrapper(msg: Any):
                 if isinstance(msg, Image):
@@ -298,7 +299,7 @@ class NiceNode(Node, Generic[CfgType]):
                 if 0 in img.shape:
                     self._logger.debug("Image has invalid shape!")
                     return
-                func(img)
+                func(img, msg.header)
 
             return func
 
