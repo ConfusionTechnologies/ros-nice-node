@@ -1,8 +1,9 @@
 from copy import copy
 from traceback import format_exc
-from typing import Any, Callable, Dict, Generic, List, Union
+from typing import Any, Callable, Dict, Generic, List, Sequence, Union
 
 import rclpy
+from message_filters import ApproximateTimeSynchronizer, Subscriber
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -226,14 +227,19 @@ class NiceNode(Node, Generic[CfgType]):
 
     def sub(
         self,
-        key: str,
+        key: Union[str, list],
         msg_type: MsgType = None,
         qos: Union[QoSProfile, int] = RT_SUB_PROFILE,
+        sync_queue_size: int = 30,
+        sync_delay: float = 0.05,
     ):
         """Decorator to register subscription callback.
 
         If `msg_type` is None, this decorator will use `ros2topic.api` to get the
         message type and will block until successful.
+
+        If `key` is a list, the function will subscribe to and synchronize multiple topics.
+        In which case msg_type should either be a list or None.
 
         The default for `qos` is designed for realtime, high throughput applications.
         If greater reliability is wanted, set `qos` to an int, representing the queue
@@ -243,27 +249,47 @@ class NiceNode(Node, Generic[CfgType]):
             key (str): Config key containing the topic name to subscribe to.
             msg_type (MsgType, optional): Message type. Defaults to None.
             qos (Union[QoSProfile, int], optional): QosProfile. Defaults to RT_SUB_PROFILE.
+            sync_queue_size (int): Queue size when syncing multiple topics. Defaults to 30.
+            sync_delay (float): Max delay in seconds when syncing multiple topics. Defaults to 0.05.
 
         Returns:
             Callable: Decorator
         """
-        self._assert_key(key)
+        is_multi = not isinstance(key, str) and isinstance(key, Sequence)
+        keys = key if is_multi else [key]
+        for k in keys:
+            self._assert_key(k)
 
         def decorator(func: Callable[[MsgType], Any]):
-            handle: Subscription = None
+            handles: List[Subscriber] = []
 
-            @self.init(key)
+            @self.init(*keys)
             def sub(changes: Dict[str, Any]):
-                nonlocal msg_type, qos, handle, func
-                topic: str = changes[key]
+                topics: List[str] = [changes[k] for k in keys]
                 if msg_type is None:
-                    msg_type = get_msg_class(self, topic, blocking=True)
-                handle = self.create_subscription(msg_type, topic, func, qos)
+                    msg_types = [get_msg_class(self, t, blocking=True) for t in topics]
+                else:
+                    msg_types = msg_type if is_multi else [msg_type]
 
-            @self.clean(key)
+                for topic, typ in zip(topics, msg_types):
+                    if typ is None:
+                        typ = get_msg_class(self, topic, blocking=True)
+                    handles.append(Subscriber(self, typ, topic, qos_profile=qos))
+
+                if is_multi and len(handles) > 1:
+                    ts = ApproximateTimeSynchronizer(
+                        handles, sync_queue_size, sync_delay
+                    )
+                    ts.registerCallback(func)
+                else:
+                    handles[0].registerCallback(func)
+
+            @self.clean(*keys)
             def unsub():
-                nonlocal handle
-                self.destroy_subscription(handle)
+                nonlocal handles
+                for h in handles:
+                    self.destroy_subscription(h.sub)
+                handles = []
 
             return func
 
