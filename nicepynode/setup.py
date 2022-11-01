@@ -17,5 +17,7 @@ setup(
     description="High-level Python API to make ROS easier.",
     license="MIT",
     tests_require=["pytest"],
-    entry_points={"console_scripts": []},
+    entry_points={
+        "console_scripts": ["bbox_converter = nicepynode.bbox_converter:main"]
+    },
 )
