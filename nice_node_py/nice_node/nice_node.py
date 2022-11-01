@@ -9,7 +9,6 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.publisher import Publisher
 from rclpy.qos import QoSPresetProfiles, QoSProfile
-from rclpy.subscription import Subscription
 from rclpy.timer import Timer
 from rclpy.utilities import get_default_context
 from ros2topic.api import get_msg_class
@@ -88,7 +87,7 @@ class NiceNode(Node, Generic[CfgType]):
                 except:
                     pass
 
-        self._default_cfg = cfg
+        self._default_cfg = cfg()
         self._cfg = None
 
         params = self.declare_parameters("", params_from_struct(cfg, **kwargs))
@@ -132,7 +131,10 @@ class NiceNode(Node, Generic[CfgType]):
             # trigger clean before cfg update
             for func, deps in self._clean_callbacks:
                 if should_update(deps, changes.keys()):
-                    func(changes)
+                    try:
+                        func(changes)
+                    except TypeError:
+                        func()
 
             # NOTE: This callback occurs before the parameters are actually set.
             # The official way to be notified when the parameters are set is through
@@ -145,7 +147,10 @@ class NiceNode(Node, Generic[CfgType]):
             # trigger init after cfg update
             for func, deps in self._init_callbacks:
                 if should_update(deps, changes.keys()):
-                    func(changes)
+                    try:
+                        func(changes)
+                    except TypeError:
+                        func()
 
             self._logger.info(f"Config change successful")
             return SetParametersResult(successful=True, reason="")
