@@ -228,8 +228,6 @@ class NiceNode(Node, Generic[CfgType]):
     # due to the added complexity of handling a dynamically typed config object.
     # Either we sacrifice simple names via namespacing, or we risk name collisions.
 
-    # TODO: implementation of sub for message synchronization
-
     def sub(
         self,
         key: Union[str, list],
@@ -300,6 +298,7 @@ class NiceNode(Node, Generic[CfgType]):
 
         return decorator
 
+    # TODO: sub_img should also support message synchronization like sub
     def sub_img(self, key: str, qos: Union[QoSProfile, int] = RT_SUB_PROFILE):
         """Decorator to register subscription callback to an Image/Compressed Image topic.
 
@@ -420,6 +419,18 @@ class NiceNode(Node, Generic[CfgType]):
             return func
 
         return decorator
+
+    def srv(self):
+        raise NotImplementedError
+
+    def call_srv(self):
+        raise NotImplementedError
+
+    def action(self):
+        raise NotImplementedError
+
+    def call_action(self):
+        raise NotImplementedError
 
 
 def run(node: NiceNode):
