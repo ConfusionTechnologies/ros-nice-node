@@ -76,8 +76,10 @@ class Job(ABC, Generic[CT]):
             self._rate_timer = node.create_timer(1.0 / cfg.rate, self._rate_timer_cb)
         except ZeroDivisionError:
             self._rate_timer = None
-        self._restart_sub = node.create_subscription(Empty, "~/restart", self.restart)
-        self._kill_sub = node.create_subscription(Empty, "~/kill", self.crash)
+        self._restart_sub = node.create_subscription(
+            Empty, "~/restart", self.restart, 10
+        )
+        self._kill_sub = node.create_subscription(Empty, "~/kill", self.crash, 10)
 
     @abstractmethod
     def detach_behaviour(self, node: Node):

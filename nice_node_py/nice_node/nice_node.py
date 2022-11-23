@@ -69,8 +69,8 @@ class NiceNode(Node, Generic[CfgType]):
         self._publishers_cache: Dict[str, Publisher] = {}
 
         # For restart and kill topics; Doesn't need clean up as they always exist.
-        self.create_subscription(Empty, "~/restart", self.restart)
-        self.create_subscription(Empty, "~/kill", self.crash)
+        self.create_subscription(Empty, "~/restart", self.restart, 10)
+        self.create_subscription(Empty, "~/kill", self.crash, 10)
 
     def declare_config(self, cfg: CfgType, **kwargs):
         """Declare node parameters from config.
