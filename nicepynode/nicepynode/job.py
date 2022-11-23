@@ -5,12 +5,12 @@ from dataclasses import dataclass, field
 from traceback import format_exc
 from typing import Generic, TypeVar
 
+from nicepynode.utils import dataclass_from_parameters
 from rcl_interfaces.msg import ParameterDescriptor  # FloatingPointRange,
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.parameter import Parameter
-
-from nicepynode.utils import dataclass_from_parameters
+from std_msgs.msg import Empty
 
 # TODO:
 # - Integrate Managed Lifecycle Nodes when ready
@@ -76,11 +76,15 @@ class Job(ABC, Generic[CT]):
             self._rate_timer = node.create_timer(1.0 / cfg.rate, self._rate_timer_cb)
         except ZeroDivisionError:
             self._rate_timer = None
+        self._restart_sub = node.create_subscription(Empty, "~/restart", self.restart)
+        self._kill_sub = node.create_subscription(Empty, "~/kill", self.crash)
 
     @abstractmethod
     def detach_behaviour(self, node: Node):
         """Detach & clean up Job behaviours attached to Node."""
         node.destroy_timer(self._rate_timer)
+        node.destroy_subscription(self._restart_sub)
+        node.destroy_subscription(self._kill_sub)
 
     @abstractmethod
     def on_params_change(self, node: Node, changes: dict):
@@ -112,6 +116,12 @@ class Job(ABC, Generic[CT]):
         self.detach_behaviour(self.node)
         self.attach_behaviour(self.node, self.cfg)
         self.log.info("Restarted")
+
+    def crash(self):
+        """Crashes the node after calling `detach_behaviour()`."""
+        self.log.warn("Crashing the node on command.")
+        self.detach_behaviour(self.node)
+        raise KeyboardInterrupt
 
     def get_timestamp(self):
         """Shortcut for node.get_clock().now().to_msg()"""

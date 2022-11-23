@@ -12,7 +12,7 @@ from rclpy.qos import QoSPresetProfiles, QoSProfile
 from rclpy.timer import Timer
 from rclpy.utilities import get_default_context
 from ros2topic.api import get_msg_class
-from std_msgs.msg import Header
+from std_msgs.msg import Empty, Header
 
 from .types import *
 from .utils import params_from_struct, should_update, struct_from_params
@@ -68,6 +68,10 @@ class NiceNode(Node, Generic[CfgType]):
         # I refuse to search the internal self._publishers each time for topic
         self._publishers_cache: Dict[str, Publisher] = {}
 
+        # For restart and kill topics; Doesn't need clean up as they always exist.
+        self.create_subscription(Empty, "~/restart", self.restart)
+        self.create_subscription(Empty, "~/kill", self.crash)
+
     def declare_config(self, cfg: CfgType, **kwargs):
         """Declare node parameters from config.
 
@@ -108,6 +112,24 @@ class NiceNode(Node, Generic[CfgType]):
         raise NotImplementedError()
         self.set_parameters(Parameter())
 
+    def restart(self):
+        """Restarts the node by calling all init & clean callbacks."""
+        # self._get_param_dict() isn't cached; but what if callback changes param
+        # during restart? hence call it each time instead of reusing.
+        for func, _ in self._clean_callbacks:
+            func(self._get_param_dict())
+
+        for func, _ in self._init_callbacks:
+            func(self._get_param_dict())
+
+    def crash(self):
+        """Crashes the node after calling all clean callbacks."""
+        for func, _ in self._clean_callbacks:
+            func(self._get_param_dict())
+
+        self._logger.warning("Crashing the node on command.")
+        raise KeyboardInterrupt
+
     def _assert_key(self, key: str):
         """Ensure key is in config data structure."""
         try:
@@ -131,10 +153,7 @@ class NiceNode(Node, Generic[CfgType]):
             # trigger clean before cfg update
             for func, deps in self._clean_callbacks:
                 if should_update(deps, changes.keys()):
-                    try:
-                        func(changes)
-                    except TypeError:
-                        func()
+                    func(changes)
 
             # NOTE: This callback occurs before the parameters are actually set.
             # The official way to be notified when the parameters are set is through
@@ -147,10 +166,7 @@ class NiceNode(Node, Generic[CfgType]):
             # trigger init after cfg update
             for func, deps in self._init_callbacks:
                 if should_update(deps, changes.keys()):
-                    try:
-                        func(changes)
-                    except TypeError:
-                        func()
+                    func(changes)
 
             self._logger.info(f"Config change successful")
             return SetParametersResult(successful=True, reason="")
@@ -159,6 +175,7 @@ class NiceNode(Node, Generic[CfgType]):
             self._logger.info(f"Error applying changes:\n{exc}")
             return SetParametersResult(successful=False, reason=exc)
 
+    # TODO: is there a use case for remove_callback?
     def _add_callback(self, arr: CallbackListType, now: bool, *deps: str):
         """Internal function to add a callback to NiceNode via a decorator."""
 
@@ -171,13 +188,18 @@ class NiceNode(Node, Generic[CfgType]):
                 deps = None  # don't rerun
             else:
                 deps = set(deps)
-            arr.append((func, deps))
-            if now:
-                # call func now with all parameters as "changes"
+
+            def wrapper(changes: dict):
                 try:
-                    func(self._get_param_dict())
+                    func(changes)
                 except TypeError:
                     func()  # func doesn't need changes dict
+
+            arr.append((wrapper, deps))
+            if now:
+                # call func now with all parameters as "changes"
+                wrapper(self._get_param_dict())
+
             return func
 
         return decorator
