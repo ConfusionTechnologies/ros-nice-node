@@ -1,8 +1,10 @@
 from copy import copy
+from pathlib import Path
 from traceback import format_exc
 from typing import Any, Callable, Dict, Generic, List, Sequence, Union
 
 import rclpy
+import yaml
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
@@ -29,6 +31,10 @@ RT_SUB_PROFILE.depth = 0
 RT_PUB_PROFILE = copy(QoSPresetProfiles.SENSOR_DATA.value)
 RT_PUB_PROFILE.depth = 0
 
+RESTART_TOPIC = "~/restart"
+KILL_TOPIC = "~/kill"
+CFG_PATH = Path("/data/node_cfg")
+
 
 class NiceNode(Node, Generic[CfgType]):
     @property
@@ -46,11 +52,13 @@ class NiceNode(Node, Generic[CfgType]):
             exc = format_exc()
             raise RuntimeError(f"Config has not been declared yet!\n{exc}")
 
-    def __init__(self, node_name: str = ..., **kwargs):
+    def __init__(self, node_name: str = ..., persist_cfg: bool = True, **kwargs):
         """See https://docs.ros2.org/latest/api/rclpy/api/node.html#rclpy.node.Node for all arguments.
 
         NiceNode inherits from rclpy.Node. If `node_name` is `...`, a random name will
-        be generated.
+        be generated. Do note that using a random name means the node config will
+        not persist across restarts. If `persist_cfg` is True, config will be saved
+        and reloaded from a yaml file.
         """
 
         # Init default context if user doesn't provide custom context & default
@@ -63,14 +71,17 @@ class NiceNode(Node, Generic[CfgType]):
 
         super(NiceNode, self).__init__(node_name, **kwargs)
 
+        self.persist_cfg = persist_cfg
+        self._cfg_path = CFG_PATH / self.get_namespace()[1:] / f"{self.get_name()}.yaml"
+
         self._init_callbacks: CallbackListType = []
         self._clean_callbacks: CallbackListType = []
         # I refuse to search the internal self._publishers each time for topic
         self._publishers_cache: Dict[str, Publisher] = {}
 
         # For restart and kill topics; Doesn't need clean up as they always exist.
-        self.create_subscription(Empty, "~/restart", self.restart, 10)
-        self.create_subscription(Empty, "~/kill", self.crash, 10)
+        self.create_subscription(Empty, RESTART_TOPIC, self.restart, 10)
+        self.create_subscription(Empty, KILL_TOPIC, self.crash, 10)
 
     def declare_config(self, cfg: CfgType, **kwargs):
         """Declare node parameters from config.
@@ -95,6 +106,7 @@ class NiceNode(Node, Generic[CfgType]):
         self._cfg = None
 
         params = self.declare_parameters("", params_from_struct(cfg, **kwargs))
+        self._load_config()  # must be before param callback is added
         self.add_on_set_parameters_callback(self._callback_params_changed)
         self._logger.info(f"Config declared:\n{self.cfg}")
         return params
@@ -168,7 +180,8 @@ class NiceNode(Node, Generic[CfgType]):
                 if should_update(deps, changes.keys()):
                     func(changes)
 
-            self._logger.info(f"Config change successful")
+            self._logger.info(f"Config change successful.")
+            self._save_config(changes)
             return SetParametersResult(successful=True, reason="")
         except:
             exc = format_exc()
@@ -209,6 +222,37 @@ class NiceNode(Node, Generic[CfgType]):
         params = {n: p.value for n, p in self._parameters.items()}
         params.pop("use_sim_time", None)  # remove predeclared ROS2 parameter
         return params
+
+    def _save_config(self, changes: dict = {}):
+        """Save current node parameters to `self._cfg_path`."""
+        if not self.persist_cfg:
+            return
+
+        self._cfg_path.parent.mkdir(exist_ok=True, parents=True)
+
+        params = self._get_param_dict()
+        params.update(changes)
+        with open(self._cfg_path, "w") as f:
+            yaml.safe_dump(params, f)
+
+    # TODO: watch for config change in file
+    def _load_config(self):
+        """Load and set node parameters from `self._cfg_path` file."""
+        if not self.persist_cfg:
+            return
+
+        if not self._cfg_path.exists():
+            self._save_config()
+
+        with open(self._cfg_path, "r") as f:
+            obj: Dict[str, Any] = yaml.safe_load(f)
+
+        params = [Parameter(name, value=val) for name, val in obj.items()]
+        # TODO: detect if param missing from config file; if so, replace with default value
+        # default value = cfg struct + launch overrides
+        result = self.set_parameters_atomically(params)
+        self._cfg = None
+        assert result.successful
 
     def init(self, *deps: str, now=True):
         """Decorator to register callback to run after parameter/config change.
@@ -323,6 +367,7 @@ class NiceNode(Node, Generic[CfgType]):
     # TODO: sub_img should also support message synchronization like sub
     def sub_img(self, key: str, qos: Union[QoSProfile, int] = RT_SUB_PROFILE):
         """Decorator to register subscription callback to an Image/Compressed Image topic.
+        Image will be BGR8, similar to `cv2.imread()`.
 
         Args:
             key (str): Config key containing the topic name to subscribe to.

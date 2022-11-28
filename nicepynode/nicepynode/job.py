@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 from traceback import format_exc
 from typing import Generic, TypeVar
 
+import yaml
 from nicepynode.utils import dataclass_from_parameters
 from rcl_interfaces.msg import ParameterDescriptor  # FloatingPointRange,
 from rcl_interfaces.msg import SetParametersResult
@@ -14,6 +16,10 @@ from std_msgs.msg import Empty
 
 # TODO:
 # - Integrate Managed Lifecycle Nodes when ready
+
+RESTART_TOPIC = "~/restart"
+KILL_TOPIC = "~/kill"
+CFG_PATH = Path("/data/node_cfg")
 
 
 @dataclass
@@ -42,6 +48,8 @@ class Job(ABC, Generic[CT]):
     """Node to attach Job to."""
     ini_cfg: CT = field(default_factory=JobCfg)
     """Initial/default config for Job."""
+    persist_cfg: bool = True
+    """Whether changes to config should persist across restarts."""
 
     @property
     def cfg(self) -> CT:
@@ -77,9 +85,9 @@ class Job(ABC, Generic[CT]):
         except ZeroDivisionError:
             self._rate_timer = None
         self._restart_sub = node.create_subscription(
-            Empty, "~/restart", self.restart, 10
+            Empty, RESTART_TOPIC, self.restart, 10
         )
-        self._kill_sub = node.create_subscription(Empty, "~/kill", self.crash, 10)
+        self._kill_sub = node.create_subscription(Empty, KILL_TOPIC, self.crash, 10)
 
     @abstractmethod
     def detach_behaviour(self, node: Node):
@@ -155,14 +163,49 @@ class Job(ABC, Generic[CT]):
                 self.restart()
 
             self.log.debug(f"Config changed: {changes}")
+            self._save_cfg(changes)
             return SetParametersResult(successful=True, reason="")
         except:
             exc = format_exc()
             self.log.error(f"Error applying {changes}:\n{exc}")
             return SetParametersResult(successful=False, reason=exc)
 
+    def _save_cfg(self, changes: dict = {}):
+        if not self.persist_cfg:
+            return
+
+        self._cfg_path.parent.mkdir(exist_ok=True, parents=True)
+
+        params = {n: p.value for n, p in self.node._parameters.items()}
+        params.update(changes)
+        with open(self._cfg_path, "w") as f:
+            yaml.safe_dump(params, f)
+
+    # TODO: watch for config change in file
+    def _load_cfg(self):
+        if not self.persist_cfg:
+            return
+
+        if not self._cfg_path.exists():
+            self._save_cfg()
+
+        with open(self._cfg_path, "r") as f:
+            obj: dict = yaml.safe_load(f)
+
+        self.log.info(f"Config loaded:\n{obj}")
+
+        params = [Parameter(name, value=val) for name, val in obj.items()]
+        # TODO: detect if param missing from config file; if so, replace with default value
+        # default value = cfg struct + launch overrides
+        result = self.node.set_parameters_atomically(params)
+        self._cfg = None
+        assert result.successful
+
     def __post_init__(self):
         """Attaches Job to Node."""
+        self._cfg_path = (
+            CFG_PATH / self.node.get_namespace()[1:] / f"{self.node.get_name()}.yaml"
+        )
 
         self.log = self.node.get_logger()
         # current cfg based off node params for easier access
@@ -175,6 +218,7 @@ class Job(ABC, Generic[CT]):
 
         # use self.ini_cfg to set params, which then sets self._cfg
         self.attach_params(self.node, self.ini_cfg)
+        self._load_cfg()
         self.attach_behaviour(self.node, self.cfg)
         # NOTE: till all callbacks return True, ros won't actually change the
         # params. This can cause glitches such as stale config.
