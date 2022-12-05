@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from traceback import format_exc
@@ -12,13 +13,10 @@ from rcl_interfaces.msg import ParameterDescriptor  # FloatingPointRange,
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.parameter import Parameter
-from std_msgs.msg import Empty
+from std_srvs.srv import Empty, Trigger
 
-# TODO:
-# - Integrate Managed Lifecycle Nodes when ready
-
-RESTART_TOPIC = "~/restart"
-KILL_TOPIC = "~/kill"
+RESTART_SERVICE = "~/restart"
+STOP_SERVICE = "~/stop"
 CFG_PATH = Path("/data/node_cfg")
 
 
@@ -84,17 +82,17 @@ class Job(ABC, Generic[CT]):
             self._rate_timer = node.create_timer(1.0 / cfg.rate, self._rate_timer_cb)
         except ZeroDivisionError:
             self._rate_timer = None
-        self._restart_sub = node.create_subscription(
-            Empty, RESTART_TOPIC, self.restart, 10
+        self._restart_srv = node.create_service(
+            Trigger, RESTART_SERVICE, self._srv_restart
         )
-        self._kill_sub = node.create_subscription(Empty, KILL_TOPIC, self.crash, 10)
+        self._stop_srv = node.create_service(Empty, STOP_SERVICE, self._srv_crash)
 
     @abstractmethod
     def detach_behaviour(self, node: Node):
         """Detach & clean up Job behaviours attached to Node."""
         node.destroy_timer(self._rate_timer)
-        node.destroy_subscription(self._restart_sub)
-        node.destroy_subscription(self._kill_sub)
+        node.destroy_service(self._restart_srv)
+        node.destroy_service(self._stop_srv)
 
     @abstractmethod
     def on_params_change(self, node: Node, changes: dict):
@@ -127,11 +125,11 @@ class Job(ABC, Generic[CT]):
         self.attach_behaviour(self.node, self.cfg)
         self.log.info("Restarted")
 
-    def crash(self):
+    def crash(self, reason=""):
         """Crashes the node after calling `detach_behaviour()`."""
-        self.log.warn("Crashing the node on command.")
+        self.log.warn("Performing clean up before node crash.")
         self.detach_behaviour(self.node)
-        raise KeyboardInterrupt
+        assert False, reason
 
     def get_timestamp(self):
         """Shortcut for node.get_clock().now().to_msg()"""
@@ -169,6 +167,32 @@ class Job(ABC, Generic[CT]):
             exc = format_exc()
             self.log.error(f"Error applying {changes}:\n{exc}")
             return SetParametersResult(successful=False, reason=exc)
+
+    def _srv_restart(self, req: Trigger.Request, res: Trigger.Response):
+        """Service handler for restart service."""
+        self.log.info("Restart service called.")
+        try:
+            self.restart()
+        except:
+            res.success = False
+            res.message = format_exc()
+            return res
+        res.success = True
+        return res
+
+    def _srv_crash(self, req: Empty.Request, res: Empty.Response):
+        """Service handler for stop service."""
+        self.log.info("Stop service called.")
+
+        @contextmanager
+        def crash_after():
+            try:
+                yield
+            finally:
+                self.crash(reason="Stop service called.")
+
+        with crash_after():
+            return res
 
     def _save_cfg(self, changes: dict = {}):
         if not self.persist_cfg:

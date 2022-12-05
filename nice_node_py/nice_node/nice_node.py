@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from copy import copy
 from pathlib import Path
 from traceback import format_exc
@@ -14,7 +15,8 @@ from rclpy.qos import QoSPresetProfiles, QoSProfile
 from rclpy.timer import Timer
 from rclpy.utilities import get_default_context
 from ros2topic.api import get_msg_class
-from std_msgs.msg import Empty, Header
+from std_msgs.msg import Header
+from std_srvs.srv import Empty, Trigger
 
 from .types import *
 from .utils import params_from_struct, should_update, struct_from_params
@@ -22,6 +24,9 @@ from .utils import params_from_struct, should_update, struct_from_params
 __all__ = ["NiceNode", "run"]
 
 # TODO: make the global default RT_SUB_PROFILE & RT_PUB_PROFILE configurable
+# TODO: expose callback groups which are useful for multi-threaded executors,
+# see: https://docs.ros.org/en/humble/How-To-Guides/Using-callback-groups.html
+# TODO: hang detection for everything
 
 # Realtime Profile: don't bog down publisher when model is slow
 RT_SUB_PROFILE = copy(QoSPresetProfiles.SENSOR_DATA.value)
@@ -31,8 +36,8 @@ RT_SUB_PROFILE.depth = 0
 RT_PUB_PROFILE = copy(QoSPresetProfiles.SENSOR_DATA.value)
 RT_PUB_PROFILE.depth = 0
 
-RESTART_TOPIC = "~/restart"
-KILL_TOPIC = "~/kill"
+RESTART_SERVICE = "~/restart"
+STOP_SERVICE = "~/stop"
 CFG_PATH = Path("/data/node_cfg")
 
 
@@ -79,9 +84,9 @@ class NiceNode(Node, Generic[CfgType]):
         # I refuse to search the internal self._publishers each time for topic
         self._publishers_cache: Dict[str, Publisher] = {}
 
-        # For restart and kill topics; Doesn't need clean up as they always exist.
-        self.create_subscription(Empty, RESTART_TOPIC, self.restart, 10)
-        self.create_subscription(Empty, KILL_TOPIC, self.crash, 10)
+        # For restart and stop services; Doesn't need clean up as they always exist.
+        self.create_service(Trigger, RESTART_SERVICE, self._srv_restart)
+        self.create_service(Empty, STOP_SERVICE, self._srv_stop)
 
     def declare_config(self, cfg: CfgType, **kwargs):
         """Declare node parameters from config.
@@ -130,17 +135,25 @@ class NiceNode(Node, Generic[CfgType]):
         # during restart? hence call it each time instead of reusing.
         for func, _ in self._clean_callbacks:
             func(self._get_param_dict())
-
         for func, _ in self._init_callbacks:
             func(self._get_param_dict())
+        self._logger.info("Node restarted.")
 
-    def crash(self):
-        """Crashes the node after calling all clean callbacks."""
+    def crash(self, reason=""):
+        """Crashes the node after calling all clean callbacks.
+
+        Args:
+            reason (Any, optional): Reason for crash. Defaults to "".
+        """
+        self._logger.info("Performing clean up before node crash.")
         for func, _ in self._clean_callbacks:
-            func(self._get_param_dict())
-
-        self._logger.warning("Crashing the node on command.")
-        raise KeyboardInterrupt
+            try:
+                # TODO: hang detection for clean up
+                func(self._get_param_dict())
+            except:
+                self._logger.error(f"Error during clean up:\n{format_exc()}")
+        self.destroy_node()
+        assert False, reason
 
     def _assert_key(self, key: str):
         """Ensure key is in config data structure."""
@@ -184,9 +197,37 @@ class NiceNode(Node, Generic[CfgType]):
             self._save_config(changes)
             return SetParametersResult(successful=True, reason="")
         except:
+            # Should crash because node may be in invalid state?
             exc = format_exc()
             self._logger.info(f"Error applying changes:\n{exc}")
             return SetParametersResult(successful=False, reason=exc)
+
+    def _srv_restart(self, req: Trigger.Request, res: Trigger.Response):
+        """Service handler for restart service."""
+        self._logger.info("Restart service called.")
+        try:
+            self.restart()
+        except:
+            # Should crash because node may be in invalid state?
+            res.success = False
+            res.message = format_exc()
+            return res
+        res.success = True
+        return res
+
+    def _srv_stop(self, req: Empty.Request, res: Empty.Response):
+        """Service handler for stop service."""
+        self._logger.info("Stop service called.")
+
+        @contextmanager
+        def crash_after():
+            try:
+                yield
+            finally:
+                self.crash(reason="Stop service called.")
+
+        with crash_after():
+            return res
 
     # TODO: is there a use case for remove_callback?
     def _add_callback(self, arr: CallbackListType, now: bool, *deps: str):
@@ -504,6 +545,9 @@ def run(node: NiceNode):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
+        try:
+            node.crash()
+        except:
+            pass  # suppress error
+    except:
+        node.crash()
