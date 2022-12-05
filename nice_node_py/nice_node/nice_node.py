@@ -224,7 +224,7 @@ class NiceNode(Node, Generic[CfgType]):
             try:
                 yield
             finally:
-                self.crash(reason="Stop service called.")
+                self.executor.create_task(self.crash, reason="Stop service called.")
 
         with crash_after():
             return res
@@ -383,6 +383,7 @@ class NiceNode(Node, Generic[CfgType]):
 
                 for topic, typ in zip(topics, msg_types):
                     if typ is None:
+                        # TODO: do periodically instead of blocking to prevent hang
                         typ = get_msg_class(self, topic, blocking=True)
                     handles.append(Subscriber(self, typ, topic, qos_profile=qos))
 

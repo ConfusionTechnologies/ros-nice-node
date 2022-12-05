@@ -187,7 +187,9 @@ class Job(ABC, Generic[CT]):
             try:
                 yield
             finally:
-                self.crash(reason="Stop service called.")
+                self.node.executor.create_task(
+                    self.crash, reason="Stop service called."
+                )
 
         with crash_after():
             return res
