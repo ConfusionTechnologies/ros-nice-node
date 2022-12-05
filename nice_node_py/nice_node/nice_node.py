@@ -113,7 +113,7 @@ class NiceNode(Node, Generic[CfgType]):
         params = self.declare_parameters("", params_from_struct(cfg, **kwargs))
         self._load_config()  # must be before param callback is added
         self.add_on_set_parameters_callback(self._callback_params_changed)
-        self._logger.info(f"Config declared:\n{self.cfg}")
+        self._logger.debug(f"Config declared:\n{self.cfg}")
         return params
 
     def set_config(self, path: str, val: Any):
@@ -145,7 +145,7 @@ class NiceNode(Node, Generic[CfgType]):
         Args:
             reason (Any, optional): Reason for crash. Defaults to "".
         """
-        self._logger.info("Performing clean up before node crash.")
+        self._logger.debug("Performing clean up before node crash.")
         for func, _ in self._clean_callbacks:
             try:
                 # TODO: hang detection for clean up
@@ -193,13 +193,13 @@ class NiceNode(Node, Generic[CfgType]):
                 if should_update(deps, changes.keys()):
                     func(changes)
 
-            self._logger.info(f"Config change successful.")
+            self._logger.debug(f"Config change successful.")
             self._save_config(changes)
             return SetParametersResult(successful=True, reason="")
         except:
             # Should crash because node may be in invalid state?
             exc = format_exc()
-            self._logger.info(f"Error applying changes:\n{exc}")
+            self._logger.error(f"Error applying changes:\n{exc}")
             return SetParametersResult(successful=False, reason=exc)
 
     def _srv_restart(self, req: Trigger.Request, res: Trigger.Response):

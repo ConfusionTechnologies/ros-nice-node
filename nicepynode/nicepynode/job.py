@@ -127,7 +127,7 @@ class Job(ABC, Generic[CT]):
 
     def crash(self, reason=""):
         """Crashes the node after calling `detach_behaviour()`."""
-        self.log.warn("Performing clean up before node crash.")
+        self.log.debug("Performing clean up before node crash.")
         self.detach_behaviour(self.node)
         assert False, reason
 
@@ -160,7 +160,7 @@ class Job(ABC, Generic[CT]):
                 self.log.debug(f"Config change requires restart.")
                 self.restart()
 
-            self.log.debug(f"Config changed: {changes}")
+            self.log.info(f"Config changed: {changes}")
             self._save_cfg(changes)
             return SetParametersResult(successful=True, reason="")
         except:
@@ -216,7 +216,7 @@ class Job(ABC, Generic[CT]):
         with open(self._cfg_path, "r") as f:
             obj: dict = yaml.safe_load(f)
 
-        self.log.info(f"Config loaded:\n{obj}")
+        self.log.debug(f"Config loaded:\n{obj}")
 
         params = [Parameter(name, value=val) for name, val in obj.items()]
         # TODO: detect if param missing from config file; if so, replace with default value
