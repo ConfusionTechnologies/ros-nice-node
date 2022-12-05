@@ -91,8 +91,6 @@ class Job(ABC, Generic[CT]):
     def detach_behaviour(self, node: Node):
         """Detach & clean up Job behaviours attached to Node."""
         node.destroy_timer(self._rate_timer)
-        node.destroy_service(self._restart_srv)
-        node.destroy_service(self._stop_srv)
 
     @abstractmethod
     def on_params_change(self, node: Node, changes: dict):
