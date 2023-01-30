@@ -15,7 +15,6 @@ from rclpy.qos import QoSPresetProfiles, QoSProfile
 from rclpy.timer import Timer
 from rclpy.utilities import get_default_context
 from ros2topic.api import get_msg_class
-from std_msgs.msg import Header
 from std_srvs.srv import Empty, Trigger
 
 from .types import *
@@ -395,9 +394,18 @@ class NiceNode(Node, Generic[CfgType]):
                     handles.append(Subscriber(self, typ, topic, qos_profile=qos))
 
                 def wrapper(*msgs: Any):
-                    if convert_img:
-                        msgs = tuple(rosimg2numpy(msg, convert_img_enc) for msg in msgs)
-                    func(*msgs)
+                    args = []
+                    header = None
+                    for msg in msgs:
+                        if hasattr(msg, "header"):
+                            header = msg.header
+                        args.append(
+                            rosimg2numpy(msg, convert_img_enc) if convert_img else msg
+                        )
+                    try:
+                        func(header=header, *args)
+                    except TypeError:
+                        func(*args)
 
                 if is_multi and len(handles) > 1:
                     ts = ApproximateTimeSynchronizer(
