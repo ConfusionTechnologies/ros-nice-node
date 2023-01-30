@@ -19,7 +19,7 @@ from std_msgs.msg import Header
 from std_srvs.srv import Empty, Trigger
 
 from .types import *
-from .utils import params_from_struct, should_update, struct_from_params
+from .utils import params_from_struct, rosimg2numpy, should_update, struct_from_params
 
 __all__ = ["NiceNode", "run"]
 
@@ -342,6 +342,8 @@ class NiceNode(Node, Generic[CfgType]):
         qos: Union[QoSProfile, int] = RT_SUB_PROFILE,
         sync_queue_size: int = 30,
         sync_delay: float = 0.05,
+        convert_img: bool = True,
+        convert_img_enc: str = "bgr8",
     ):
         """Decorator to register subscription callback.
 
@@ -355,12 +357,17 @@ class NiceNode(Node, Generic[CfgType]):
         If greater reliability is wanted, set `qos` to an int, representing the queue
         depth, to get back the default reliable QoSProfile.
 
+        For `convert_img_enc`, see https://github.com/ros2/common_interfaces/blob/rolling/sensor_msgs/include/sensor_msgs/image_encodings.hpp
+        for available encodings.
+
         Args:
             key (str): Config key containing the topic name to subscribe to.
             msg_type (MsgType, optional): Message type. Defaults to None.
             qos (Union[QoSProfile, int], optional): QosProfile. Defaults to RT_SUB_PROFILE.
-            sync_queue_size (int): Queue size when syncing multiple topics. Defaults to 30.
-            sync_delay (float): Max delay in seconds when syncing multiple topics. Defaults to 0.05.
+            sync_queue_size (int, optional): Queue size when syncing multiple topics. Defaults to 30.
+            sync_delay (float, optional): Max delay in seconds when syncing multiple topics. Defaults to 0.05.
+            convert_img (bool, optional): Auto-convert CompressedImage/Image to numpy array. Defaults to True.
+            convert_img_enc (str, optional): Encoding for numpy array. Defaults to "bgr8".
 
         Returns:
             Callable: Decorator
@@ -387,13 +394,18 @@ class NiceNode(Node, Generic[CfgType]):
                         typ = get_msg_class(self, topic, blocking=True)
                     handles.append(Subscriber(self, typ, topic, qos_profile=qos))
 
+                def wrapper(*msgs: Any):
+                    if convert_img:
+                        msgs = tuple(rosimg2numpy(msg, convert_img_enc) for msg in msgs)
+                    func(*msgs)
+
                 if is_multi and len(handles) > 1:
                     ts = ApproximateTimeSynchronizer(
                         handles, sync_queue_size, sync_delay
                     )
-                    ts.registerCallback(func)
+                    ts.registerCallback(wrapper)
                 else:
-                    handles[0].registerCallback(func)
+                    handles[0].registerCallback(wrapper)
 
             @self.clean(*keys)
             def unsub():
@@ -406,9 +418,10 @@ class NiceNode(Node, Generic[CfgType]):
 
         return decorator
 
-    # TODO: sub_img should also support message synchronization like sub
     def sub_img(self, key: str, qos: Union[QoSProfile, int] = RT_SUB_PROFILE):
-        """Decorator to register subscription callback to an Image/Compressed Image topic.
+        """DEPRECATED: `NiceNode.sub()` can now convert images!
+
+        Decorator to register subscription callback to an Image/Compressed Image topic.
         Image will be BGR8, similar to `cv2.imread()`.
 
         Args:
@@ -418,31 +431,7 @@ class NiceNode(Node, Generic[CfgType]):
         Returns:
             Callable: Decorator
         """
-        self._assert_key(key)
-        # NOTE: cvbridge is optional dependency, imported here only when needed
-        # dont ask me why cvbridge decided to use a singleton structure instead
-        # of storing their conversion maps as globals
-        import numpy as np
-        from cv_bridge import CvBridge
-        from sensor_msgs.msg import Image
-
-        bridge = CvBridge()
-
-        def decorator(func: Callable[[np.ndarray, Header], Any]):
-            @self.sub(key, None, qos)
-            def wrapper(msg: Any):
-                if isinstance(msg, Image):
-                    img = bridge.imgmsg_to_cv2(msg, "bgr8")
-                else:
-                    img = bridge.compressed_imgmsg_to_cv2(msg, "bgr8")
-                if 0 in img.shape:
-                    self._logger.debug("Image has invalid shape!")
-                    return
-                func(img, msg.header)
-
-            return func
-
-        return decorator
+        return self.sub(key, qos=qos)
 
     def pub(self, key: str, msg: Any, qos: QoSProfile = RT_PUB_PROFILE):
         """Publish message.
@@ -506,7 +495,7 @@ class NiceNode(Node, Generic[CfgType]):
                     delta = now - prev_time
                 prev_time = now
                 try:
-                    func(delta / 10 ** 9)
+                    func(delta / 10**9)
                 except TypeError:
                     func()
 
