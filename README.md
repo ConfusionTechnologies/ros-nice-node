@@ -1,5 +1,14 @@
 # ros-nice-node
 
+To generate documentation:
+
+```sh
+cd ros-nice-node/nice_node_py/docs
+sphinx-apidoc -f -0 . ../
+```
+
+See <https://kanishkvarshney.medium.com/python-documentation-generating-html-using-sphinx-a0d909f5e963> for how to setup auto-generated documentation via Sphinx for other ROS packages.
+
 This repository contains 3 packages that forms a framework on top of ROS2. The goal is to:
 
 - Provide common/base features for nodes

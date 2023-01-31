@@ -14,3 +14,6 @@ __pycache__/
 
 # profiling
 *.lprof
+
+# Auto-generated sphinx documentation
+**/docs/_build
