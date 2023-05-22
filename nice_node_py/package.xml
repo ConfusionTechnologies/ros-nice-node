@@ -7,7 +7,6 @@
   <maintainer email="42513874+Interpause@users.noreply.github.com">John-Henry Lim</maintainer>
   <license>MIT</license>
 
-  <exec_depend>python-attrs-pip</exec_depend>
   <exec_depend>ros2topic</exec_depend>
   <exec_depend>message_filters</exec_depend>
 
