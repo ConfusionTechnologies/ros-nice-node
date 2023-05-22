@@ -30,7 +30,7 @@ class BBoxConverterCfg(JobCfg):
     """Video frames to predict on."""
     bbox_in_topic: str = "~/bbox_in"
     """Input topic for bboxes to crop."""
-    bbox_out_topic: str = "~/bbox_out"
+    bbox_out_topic: str = "/bbox_out"
     """Output topic for predictions."""
     bbox_type: int = BBox2Ds.XYWH
     """Output type for bbox."""
